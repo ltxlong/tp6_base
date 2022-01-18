@@ -19,9 +19,9 @@ return [
     'channels'     => [
         'file' => [
             // 日志记录方式
-            'type'           => 'File',
+            'type'           => 'app\MyLog',
             // 日志保存目录
-            'path'           => '',
+            'path'           => LOG_PATH,
             // 单文件日志写入
             'single'         => false,
             // 独立日志级别
