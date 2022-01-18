@@ -14,6 +14,9 @@ namespace think;
 
 require __DIR__ . '/../vendor/autoload.php';
 
+// 自定义目录
+define('LOG_PATH', __DIR__. '/../log/');
+
 // 执行HTTP应用并响应
 $http = (new App())->http;
 
