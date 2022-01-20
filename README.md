@@ -64,6 +64,20 @@ dao、model、service、validate的文件只要继承了相应的base类（commo
 
 至于工具类，全部方法都是静态的，就不用实例化了
 
+==============================================================
+
+controller文件有后缀：Controller
+service文件有后缀：Service
+dao文件有后缀：Dao
+model文件没有后缀！（一定不能有，会报错，写法也不好写）
+trait文件有后缀：Trait
+middleware文件有后缀：Middleware
+job文件有后缀：Job
+exception文件有后缀：Excepton
+validate文件有后缀：Validate
+listener文件有后缀：Listener
+
+
 
 
 
