@@ -9,6 +9,7 @@ if (!function_exists('retJson')) {
      * @param string $msg 提示消息
      * @param int $code 错误码
      * @param array $data 附加数据
+     * @param int $status http状态码，默认200
      * @return \think\response\Json
      *
      * 一般调用：
@@ -17,7 +18,7 @@ if (!function_exists('retJson')) {
      * 想要后面的代码继续执行，即异步，那就不能用return：
      * retJson()->send();
      */
-    function retJson(string $msg = '', int $code = 0, array $data = [])
+    function retJson(string $msg = '', int $code = 0, array $data = [], int $status = 200)
     {
         $returnData = [
             'msg' => $msg,
@@ -26,7 +27,7 @@ if (!function_exists('retJson')) {
             'request_id' => \app\MyLog::getRequestId()
         ];
 
-        return json($returnData);
+        return json($returnData, $status);
     }
 }
 
