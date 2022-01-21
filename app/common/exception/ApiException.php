@@ -10,11 +10,11 @@ use app\common\base\BaseException;
 class ApiException extends BaseException
 {
     // 状态码
-    public $code;
+    public $status;
     // 错误信息
-    public $message;
+    public $msg;
     // 错误码
-    public $errorCode;
+    public $code;
     // 附加信息
     public $data;
 
@@ -24,27 +24,27 @@ class ApiException extends BaseException
      * string $msg
      * or
      * array [$code, $msg]
-     * @param int $statusCode - http状态码，默认400
+     * @param int $status - http状态码，默认400
      * @param array $data - 附加信息
      */
-    public function __construct($apiErrConst, $statusCode = 400, $data = [])
+    public function __construct($apiErrConst, $status = 400, $data = [])
     {
         if (empty($apiErrConst)) {
-            $errorCode = 400;
-            $message = 'error';
+            $code = 400;
+            $msg = 'error';
         } else {
             if (is_array($apiErrConst)) {
-                $errorCode = $apiErrConst[0];
-                $message = $apiErrConst[1] ?? 'error';
+                $code = $apiErrConst[0];
+                $msg = $apiErrConst[1] ?? 'error';
             } else {
-                $errorCode = 400;
-                $message = $apiErrConst;
+                $code = 400;
+                $msg = $apiErrConst;
             }
         }
 
-        $this->code = $statusCode;
-        $this->message = $message;
-        $this->errorCode = $errorCode;
+        $this->status = $status;
+        $this->msg = $msg;
+        $this->code = $code;
         $this->data = $data;
     }
 }
