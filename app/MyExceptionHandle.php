@@ -21,11 +21,11 @@ use Throwable;
 class MyExceptionHandle extends Handle
 {
     // 状态码
-    public $code;
+    public $status;
     // 错误信息
-    public $message;
+    public $msg;
     // 错误码
-    public $errorCode;
+    public $code;
     // 附加信息
     public $data = [];
 
@@ -66,22 +66,22 @@ class MyExceptionHandle extends Handle
     {
         // 添加自定义异常处理机制
         if ($e instanceof BaseException) {
+            $this->status = $e->status;
+            $this->msg = $e->msg;
             $this->code = $e->code;
-            $this->message = $e->message;
-            $this->errorCode = $e->errorCode;
             $this->data = $e->data;
         } else {
             // 如果是服务器未处理的异常，将http状态码设置为500
-            $this->code = 500;
-            $this->message = 'sorry, we make a mistake';
-            $this->errorCode = 999;
+            $this->status = 500;
+            $this->msg = 'sorry, we make a mistake';
+            $this->code = 999;
         }
 
         $this->recordErrorLog($e);
 
         $result = [
-            'msg' => $this->message,
-            'code' => $this->errorCode,
+            'msg' => $this->msg,
+            'code' => $this->code,
             'data' => $this->data,
             'request_id' => MyLog::getRequestId()
         ];
@@ -103,7 +103,7 @@ class MyExceptionHandle extends Handle
 
             return json(array_merge($result, ['debug' => $debugData]));
         } else {
-            return json($request, $this->code);
+            return json($request, $this->status);
         }
     }
 
