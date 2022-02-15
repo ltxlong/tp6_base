@@ -31,6 +31,169 @@ if (!function_exists('retJson')) {
     }
 }
 
+if (!function_exists('curl_post')) {
+    /**
+     * curl post 请求
+     * @param string $url            // 请求的curl地址
+     * @param $params                // 请求的参数
+     * @param array $header          // http头
+     * @param int $timeout           // 设置超时时间
+     * @param int $log               // 是否启用日志
+     * @param int $ssl               // 是否启用ssl
+     * @param string $format         // 返回的格式
+     * @return bool|mixed|string
+     */
+    function curl_post(string $url, $params = [], array $header = [], int $timeout = 5, int $log = 1, int $ssl = 0, string $format = 'json')
+    {
+        $ch = curl_init();
+        if (is_array($params)) { // 数组
+            $urlParam = http_build_query($params);
+        } else { //json字符串
+            $urlParam = $params;
+        }
+
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_HEADER, 0);
+        curl_setopt($ch, CURLOPT_NOBODY, 0);
+
+        curl_setopt($ch, CURLOPT_TIMEOUT, $timeout); // 设置超时时间
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1); // 返回原生的（Raw）输出
+        curl_setopt($ch, CURLOPT_POST, 1); // POST
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $urlParam); // POST参数
+
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $header);
+
+        if ($ssl) {
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // 对认证证书来源的检查
+            curl_setopt($ch, CURLOPT_BINARYTRANSFER, false); // 将curl_exec()获取的信息以文件流的形式返回，而不是直接输出
+        }
+
+        $data = curl_exec($ch);
+
+        if ($format == 'json') {
+            $data = json_decode($data, true);
+        }
+
+        if (($log && !config('app_debug')) || config('app_debug')) {
+            $info = curl_getinfo($ch);
+            $_str = "--------------------------------------------------------------------------------------------------------------------\r\n";
+            $resultFormat =  $_str . "[" . date('Y-m-d H:i:s') . "] " . request()->ip() ." 耗时:[%s]s 返回状态:[%s] POST\r\n请求网址:\r\n%s\r\n请求参数:\r\n%s\r\n响应结果:\r\n%s\r\n大小:[%s]kb 速度:[%s]kb/s";
+            $resultLogMsg = sprintf($resultFormat, $info['total_time'], $info['http_code'], $info['url'], var_export($params,true), var_export($data,true), $info['size_download']/1024, $info['speed_download']/1024);;
+            $time = time();
+            $logPath = LOG_PATH . 'curl/' . date('Y', $time) . '/post_' . date('Y-m', $time) . '.log';
+            checkCurlLogSize($logPath);
+            checkCurlLogNum();
+            error_log($resultLogMsg . PHP_EOL, 3, $logPath);
+        }
+
+        curl_close($ch);
+
+        return $data;
+    }
+}
+
+if (!function_exists('curl_get')) {
+    /**
+     * curl get 请求
+     * @param string $url            // 请求的url地址
+     * @param array $params          // 请求的参数（如果请求前不拼接到url）
+     * @param array $header          // http头
+     * @param int $timeout           // 设置超时时间
+     * @param int $log               // 是否启用日志
+     * @param string $format         // 返回的格式
+     * @return bool|mixed|string
+     */
+    function curl_get(string $url, array $params = [], array $header = [], int $timeout = 5, int $log = 1, string $format = 'json')
+    {
+        $ch = curl_init();
+        if (!empty($params)) {
+            $url = $url . '?' . http_build_query($params);
+        }
+
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1); // 返回原生的（Raw）输出
+        curl_setopt($ch, CURLOPT_HEADER, 0);
+        curl_setopt($ch, CURLOPT_TIMEOUT, $timeout); // 设置超时时间
+
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $header);
+
+        $data = curl_exec($ch);
+
+        if ($format == 'json') {
+            $data = json_decode($data, true);
+        }
+
+        if(($log && !config('app_debug')) || config('app_debug')) {
+            $info = curl_getinfo($ch);
+            $_str = "--------------------------------------------------------------------------------------------------------------------\r\n";
+            $resultFormat =  $_str . "[" . date('Y-m-d H:i:s') . "] " . request()->ip() ." 耗时:[%s]s 返回状态:[%s] GET\r\n请求网址:\r\n%s\r\n请求参数:\r\n%s\r\n响应结果:\r\n%s\r\n大小:[%s]kb 速度:[%s]kb/s";
+            $resultLogMsg = sprintf($resultFormat, $info['total_time'], $info['http_code'], $info['url'], var_export($params,true), var_export($data,true), $info['size_download']/1024, $info['speed_download']/1024);
+            $time = time();
+            $logPath = LOG_PATH . 'curl/' . date('Y', $time) . '/get_' . date('Y-m', $time) . '.log';
+            checkCurlLogSize($logPath);
+            checkCurlLogNum();
+            error_log($resultLogMsg . PHP_EOL, 3, $logPath);
+        }
+
+        curl_close($ch);
+
+        return $data;
+    }
+}
+
+if (!function_exists('checkCurlLogSize')) {
+    /**
+     * 检查curl日志文件大小并自动生成备份文件
+     * @param string $destination 日志路径
+     */
+    function checkCurlLogSize(string $destination)
+    {
+        $year = date('Y', time());
+        if (!is_dir(LOG_PATH . 'curl')) {
+            mkdir(LOG_PATH . 'curl', 0755, true);
+        }
+        if (!is_dir(LOG_PATH . 'curl/' . $year)) {
+            mkdir(LOG_PATH . 'curl/' . $year, 0755, true);
+        }
+
+        if (is_file($destination)) {
+            $eachLogSize = 2097152; // 每个日志的大小 2M
+            if(floor($eachLogSize) <= filesize($destination)) {
+                try {
+                    rename($destination, dirname($destination) . DIRECTORY_SEPARATOR . time() . '-' .
+                                       basename($destination));
+                } catch (\Exception $e) {
+                }
+            }
+        } else {
+            file_put_contents($destination, "--------------------------------------------------------------------------------------------------------------------\r\n");
+        }
+    }
+}
+
+if (!function_exists('checkCurlLogNum')) {
+    /**
+     * 限制curl每年的日志数量
+     */
+    function checkCurlLogNum()
+    {
+        $yearLogMixNum = 20; // 每个年份文件夹最大日志数量
+        $year = date('Y', time());
+        $curlLogPath = LOG_PATH . 'curl/' . $year . '/';
+
+        if ($yearLogMixNum) {
+            $files = glob($curlLogPath . '*.log');
+
+            try {
+                if (count($files) > $yearLogMixNum) {
+                    unlink($files[0]);
+                }
+            } catch (\Exception $e) {
+            }
+        }
+    }
+}
+
 if (!function_exists('timeAgo')) {
     /**
      * 修改时间显示
