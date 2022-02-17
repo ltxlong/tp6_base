@@ -534,6 +534,39 @@ if (!function_exists('checkAsyncLogNum')) {
     }
 }
 
+if (!function_exists('sendToBrowser')) {
+    /**
+     * 发送文件到客户端
+     * @param string $file 文件路径
+     * @param bool $delAfterSend 是否发送后删除本地文件
+     * @param bool $exitAfterSend 是否发送后不再执行后续代码
+     */
+    function sendToBrowser(string $file, bool $delAfterSend = true, bool $exitAfterSend = true)
+    {
+        if (file_exists($file) && is_readable($file)) {
+            header('Content-Description: File Transfer');
+            header('Content-Type: application/octet-stream');
+            header('Content-Disposition: attachment;filename = ' . basename($file));
+            header('Content-Transfer-Encoding: binary');
+            header('Expires: 0');
+            header('Cache-Control: must-revalidate, post-check = 0, pre-check = 0');
+            header('Pragma: public');
+            header('Content-Length: ' . filesize($file));
+
+            ob_clean();
+            flush();
+            readfile($file);
+
+            if ($delAfterSend) {
+                unlink($file);
+            }
+            if ($exitAfterSend) {
+                exit;
+            }
+        }
+    }
+}
+
 if (!function_exists('timeAgo')) {
     /**
      * 修改时间显示
