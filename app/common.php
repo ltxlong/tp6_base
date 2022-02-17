@@ -194,6 +194,346 @@ if (!function_exists('checkCurlLogNum')) {
     }
 }
 
+if (!function_exists('sendAsyncPost')) {
+    /**
+     * 异步post请求
+     * @param string $url 请求url
+     * @param array $params 请求参数
+     * @param array $header 请求头
+     * @param bool $ignoreResult 是否忽略执行结果
+     * @param int $timeout 请求超时时间s
+     * @param int $log 是否记录日志
+     * @param string $format http响应数据的格式
+     * @return array|bool
+     */
+    function sendAsyncPost(string $url, array $params = [], array $header = [], bool $ignoreResult = true, int $timeout = 5, int $log = 0, string $format = 'json')
+    {
+        $parts = parse_url($url);
+
+        $parts['path'] = $parts['path'] ?? '/';
+        $parts['scheme'] = $parts['scheme'] ?? '';
+        $parts['host'] = $parts['host'] ?? explode('/', $parts['path'])[0];
+
+        $headerStr = "";
+        if (!empty($header)) {
+            foreach ($header as $k => $v) {
+                $headerStr .= $k . ": " . $v . "\r\n";
+            }
+        }
+
+        // 发送socket请求,获得连接句柄
+        if ($parts['scheme'] == 'https') {
+            $fp = fsockopen('ssl://' . $parts['host'], $parts['port'] ?? 443, $errno, $errstr, $timeout);
+        } elseif ($parts['scheme'] == 'http') {
+            $fp = fsockopen('tls://' . $parts['host'], $parts['port'] ?? 80, $errno, $errstr, $timeout);
+        } else {
+            $fp = fsockopen($parts['host'], $parts['port'] ?? 80, $errno, $errstr, $timeout);
+        }
+
+        if (!$fp) {
+            return false;
+        }
+
+        // 设置资源流非阻塞和超时时间
+        stream_set_blocking($fp, 0);
+        stream_set_timeout($fp, $timeout); // fsockopen()的timeout参数是创建连接时的超时，stream_set_timeout()的timeout参数是对于连接后读取流时的超时
+        $info = stream_get_meta_data($fp);
+
+        if (empty($params)) {
+            $requestBody = '';
+        } else {
+            $requestBody = http_build_query($params) . "\r\n";
+        }
+
+        $contentType = "Content-Type: application/x-www-form-urlencoded\r\n";
+        $contentLength = "Content-Length: " . strlen($requestBody) . "\r\n";
+
+        $out = "POST {$parts['path']} HTTP/1.1\r\n";
+        $out .= "Host: {$parts['host']}\r\n";
+        $out .= $headerStr;
+        $out .= $contentType;
+        $out .= $contentLength;
+        $out .= $requestBody;
+        $out .= "Connection: Close\r\n";
+        $out .= "\r\n";
+
+        if (!fwrite($fp, $out)) {
+            return false;
+        }
+
+        if ($ignoreResult) {
+            // 如果忽略执行结果，暂停一下
+            // fwrite之后马上执行fclose，nginx会直接返回499
+            // 给足够时间把请求转到fastcgi去执行(nginx)
+            usleep(20000);
+
+            fclose($fp);
+
+            if(($log && !config('app_debug')) || config('app_debug')) {
+                $_str = "--------------------------------------------------------------------------------------------------------------------\r\n";
+                $resultFormat =  $_str . "[" . date('Y-m-d H:i:s') . "] " . request()->ip() ." 已忽略执行结果 POST\r\n请求网址:\r\n%s\r\n请求参数:\r\n%s\r\n";
+                $resultLogMsg = sprintf($resultFormat, $parts['host'] . ($parts['path'] === '/' ? '' : $parts['path']), var_export($params,true));
+                $time = time();
+                $logPath = LOG_PATH . 'async/' . date('Y', $time) . '/post_' . date('Y-m', $time) . '.log';
+                checkAsyncLogSize($logPath);
+                checkAsyncLogNum();
+                error_log($resultLogMsg . PHP_EOL, 3, $logPath);
+            }
+
+            return true;
+        } else {
+            $response = '';
+
+            while (!feof($fp) && !$info['timed_out']) {
+                $response .= fread($fp, 1024);
+                $info = stream_get_meta_data($fp);
+            }
+
+            fclose($fp);
+
+            if (!$response) {
+                return false;
+            }
+
+            $separator = "/\r\n\r\n|\n\n|\r\r/";
+
+            list($responseHeader, $responseBody) = preg_split($separator, $response, 2);
+
+            $responseHeaderArr = explode(' ', $responseHeader);
+
+            if ($format == 'json') {
+                $responseResult = json_decode($responseBody, true);
+            } else {
+                $responseResult = $responseBody;
+            }
+
+            $responseHttpStatus = isset($responseHeaderArr[1]) ? (int)$responseHeaderArr[1] : $responseHeader;
+
+            if(($log && !config('app_debug')) || config('app_debug')) {
+                $_str = "--------------------------------------------------------------------------------------------------------------------\r\n";
+                $resultFormat =  $_str . "[" . date('Y-m-d H:i:s') . "] " . request()->ip() ." 返回状态:[%s] POST\r\n请求网址:\r\n%s\r\n请求参数:\r\n%s\r\n响应结果:\r\n%s\r\n";
+                $resultLogMsg = sprintf($resultFormat, $responseHttpStatus, $parts['host'] . ($parts['path'] === '/' ? '' : $parts['path']), var_export($params,true), var_export($responseResult,true));
+                $time = time();
+                $logPath = LOG_PATH . 'async/' . date('Y', $time) . '/post_' . date('Y-m', $time) . '.log';
+                checkAsyncLogSize($logPath);
+                checkAsyncLogNum();
+                error_log($resultLogMsg . PHP_EOL, 3, $logPath);
+            }
+
+            return ['status' => $responseHttpStatus, 'result' => $responseResult];
+        }
+    }
+}
+
+if (!function_exists('sendAsyncGet')) {
+    /**
+     * 异步get请求
+     * @param string $url 请求url
+     * @param array $params 请求参数
+     * @param array $header 请求头
+     * @param bool $ignoreResult 是否忽略执行结果
+     * @param int $timeout 请求超时时间s
+     * @param int $log 是否记录日志
+     * @param string $format http响应数据的格式
+     * @return array|bool
+     */
+    function sendAsyncGet(string $url, array $params = [], array $header = [], bool $ignoreResult = true, int $timeout = 5, int $log = 0, string $format = 'json')
+    {
+        $parts = parse_url($url);
+
+        $paramStr = http_build_query($params);
+
+        $parts['path'] = $parts['path'] ?? '/';
+
+        $queryStr = $parts['query'] ?? '';
+
+        if (empty($params)) {
+            $parts['query'] = isset($parts['query']) ? '?' . $parts['query'] : '';
+        } else {
+            $parts['query'] = isset($parts['query']) ? '?' . $parts['query'] . '&' . $paramStr : '?' . $paramStr;
+        }
+
+        $parts['scheme'] = $parts['scheme'] ?? '';
+        $parts['host'] = $parts['host'] ?? explode('/', $parts['path'])[0];
+
+        $headerStr = "";
+        if (!empty($header)) {
+            foreach ($header as $k => $v) {
+                $headerStr .= $k . ": " . $v . "\r\n";
+            }
+        }
+
+        // 发送socket请求,获得连接句柄
+        if ($parts['scheme'] == 'https') {
+            $fp = fsockopen('ssl://' . $parts['host'], $parts['port'] ?? 443, $errno, $errstr, $timeout);
+        } elseif ($parts['scheme'] == 'http') {
+            $fp = fsockopen('tls://' . $parts['host'], $parts['port'] ?? 80, $errno, $errstr, $timeout);
+        } else {
+            $fp = fsockopen($parts['host'], $parts['port'] ?? 80, $errno, $errstr, $timeout);
+        }
+
+        if (!$fp) {
+            return false;
+        }
+
+        // 设置资源流非阻塞和超时时间
+        stream_set_blocking($fp, 0);
+        stream_set_timeout($fp, $timeout); // fsockopen()的timeout参数是创建连接时的超时，stream_set_timeout()的timeout参数是对于连接后读取流时的超时
+        $info = stream_get_meta_data($fp);
+
+        $out = "GET {$parts['path']}{$parts['query']} HTTP/1.1\r\n";
+        $out .= "Host: {$parts['host']}\r\n";
+        $out .= $headerStr;
+        $out .= "Connection: Close\r\n";
+        $out .= "\r\n";
+
+        if (!fwrite($fp, $out)) {
+            return false;
+        }
+
+        if ($ignoreResult) {
+            // 如果忽略执行结果，暂停一下
+            // fwrite之后马上执行fclose，nginx会直接返回499
+            // 给足够时间把请求转到fastcgi去执行(nginx)
+            usleep(20000);
+
+            fclose($fp);
+
+            if(($log && !config('app_debug')) || config('app_debug')) {
+                if ($queryStr) {
+                    $queryArr = explode('&', $queryStr);
+                    foreach ($queryArr as $qvk) {
+                        $qvkArr = explode('=', $qvk);
+                        if (count($qvkArr) === 2) {
+                            if ((int)$qvkArr[1] == $qvkArr[1]) {
+                                $params[$qvkArr[0]] = (int)$qvkArr[1];
+                            } else {
+                                $params[$qvkArr[0]] = $qvkArr[1];
+                            }
+                        }
+                    }
+                }
+                $_str = "--------------------------------------------------------------------------------------------------------------------\r\n";
+                $resultFormat =  $_str . "[" . date('Y-m-d H:i:s') . "] " . request()->ip() ." 已忽略执行结果 GET\r\n请求网址:\r\n%s\r\n请求参数:\r\n%s\r\n";
+                $resultLogMsg = sprintf($resultFormat, $parts['host'] . ($parts['path'] === '/' ? '' : $parts['path']), var_export($params,true));
+                $time = time();
+                $logPath = LOG_PATH . 'async/' . date('Y', $time) . '/get_' . date('Y-m', $time) . '.log';
+                checkAsyncLogSize($logPath);
+                checkAsyncLogNum();
+                error_log($resultLogMsg . PHP_EOL, 3, $logPath);
+            }
+
+            return true;
+        } else {
+            $response = '';
+
+            while (!feof($fp) && !$info['timed_out']) {
+                $response .= fread($fp, 1024);
+                $info = stream_get_meta_data($fp);
+            }
+
+            fclose($fp);
+
+            if (!$response) {
+                return false;
+            }
+
+            $separator = "/\r\n\r\n|\n\n|\r\r/";
+
+            list($responseHeader, $responseBody) = preg_split($separator, $response, 2);
+
+            $responseHeaderArr = explode(' ', $responseHeader);
+
+            if ($format == 'json') {
+                $responseResult = json_decode($responseBody, true);
+            } else {
+                $responseResult = $responseBody;
+            }
+
+            $responseHttpStatus = isset($responseHeaderArr[1]) ? (int)$responseHeaderArr[1] : $responseHeader;
+
+            if(($log && !config('app_debug')) || config('app_debug')) {
+                if ($queryStr) {
+                    $queryArr = explode('&', $queryStr);
+                    foreach ($queryArr as $qvk) {
+                        $qvkArr = explode('=', $qvk);
+                        if (count($qvkArr) === 2) {
+                            if ((int)$qvkArr[1] == $qvkArr[1]) {
+                                $params[$qvkArr[0]] = (int)$qvkArr[1];
+                            } else {
+                                $params[$qvkArr[0]] = $qvkArr[1];
+                            }
+                        }
+                    }
+                }
+                $_str = "--------------------------------------------------------------------------------------------------------------------\r\n";
+                $resultFormat =  $_str . "[" . date('Y-m-d H:i:s') . "] " . request()->ip() ." 返回状态:[%s] GET\r\n请求网址:\r\n%s\r\n请求参数:\r\n%s\r\n响应结果:\r\n%s\r\n";
+                $resultLogMsg = sprintf($resultFormat, $responseHttpStatus, $parts['host'] . ($parts['path'] === '/' ? '' : $parts['path']), var_export($params,true), var_export($responseResult,true));
+                $time = time();
+                $logPath = LOG_PATH . 'async/' . date('Y', $time) . '/get_' . date('Y-m', $time) . '.log';
+                checkAsyncLogSize($logPath);
+                checkAsyncLogNum();
+                error_log($resultLogMsg . PHP_EOL, 3, $logPath);
+            }
+
+            return ['status' => $responseHttpStatus, 'result' => $responseResult];
+        }
+    }
+}
+
+if (!function_exists('checkAsyncLogSize')) {
+    /**
+     * 检查async日志文件大小并自动生成备份文件
+     * @param string $destination 日志路径
+     */
+    function checkAsyncLogSize(string $destination)
+    {
+        $year = date('Y', time());
+        if (!is_dir(LOG_PATH . 'async')) {
+            mkdir(LOG_PATH . 'async', 0755, true);
+        }
+        if (!is_dir(LOG_PATH . 'async/' . $year)) {
+            mkdir(LOG_PATH . 'async/' . $year, 0755, true);
+        }
+
+        if (is_file($destination)) {
+            $eachLogSize = 2097152; // 每个日志的大小 2M
+            if(floor($eachLogSize) <= filesize($destination)) {
+                try {
+                    rename($destination, dirname($destination) . DIRECTORY_SEPARATOR . time() . '-' .
+                                       basename($destination));
+                } catch (\Exception $e) {
+                }
+            }
+        } else {
+            file_put_contents($destination, '---------------------------------------------------------------');
+        }
+    }
+}
+
+if (!function_exists('checkAsyncLogNum')) {
+    /**
+     * 限制async每年的日志数量
+     */
+    function checkAsyncLogNum()
+    {
+        $yearLogMixNum = 20; // 每个年份文件夹最大日志数量
+        $year = date('Y', time());
+        $asyncLogPath = LOG_PATH . 'async/' . $year . '/';
+
+        if ($yearLogMixNum) {
+            $files = glob($asyncLogPath . '*.log');
+
+            try {
+                if (count($files) > $yearLogMixNum) {
+                    unlink($files[0]);
+                }
+            } catch (\Exception $e) {
+            }
+        }
+    }
+}
+
 if (!function_exists('timeAgo')) {
     /**
      * 修改时间显示
