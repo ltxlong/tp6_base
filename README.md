@@ -41,9 +41,9 @@ controller->service->dao->model
 
 即：
 
-类名::obj()
+类名::instance()
 
-obj()是静态方法，通过new static()实例化，一般不用单例
+instance()是静态方法，通过new static()实例化，一般不用单例
 
 并且为了写法统一，私有化构造函数类防止new
 
@@ -58,7 +58,7 @@ obj()是静态方法，通过new static()实例化，一般不用单例
 
 dao、model、service、validate的文件只要继承了相应的base类（common/base目录里），
 
-就可以通过类名::obj()类实例化
+就可以通过类名::instance()类实例化
 
 至于自定义异常类，不用new static()的方式，还是用new类实例化
 
