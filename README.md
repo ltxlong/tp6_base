@@ -64,6 +64,8 @@ dao、model、service、validate的文件只要继承了相应的base类（commo
 
 至于工具类，全部方法都是静态的，就不用实例化了
 
+为什么不用facade？用facade的话，ide跳转不了，并且也没提示
+
 ==============================================================
 
 controller文件有后缀：Controller
