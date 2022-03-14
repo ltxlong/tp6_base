@@ -18,7 +18,7 @@ class BaseModel extends Model
      * 获取实例化对象
      * @return static
      */
-    public static function obj()
+    public static function instance()
     {
         return new static();
     }
