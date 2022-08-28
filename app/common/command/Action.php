@@ -39,7 +39,7 @@ class Action extends Command
         $result = app($this->getClassPath($arguments['route']))->$action($params);
         $result = $result ?: '';
 
-        $output->writeln(is_array($result) ? json_encode($result) : is_object($result) ? $result->getContent() : $result);
+        $output->writeln(is_array($result) ? json_encode($result) : (is_object($result) ? $result->getContent() : $result));
     }
 
     protected function handleOptions($options)
