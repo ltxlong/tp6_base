@@ -32,7 +32,7 @@ class InviteService extends BaseService
 
     public function __construct()
     {
-        $this->randSourceStr = config('invite')['inviteSourceStr'];
+        $this->randSourceStr = env('invite.invite_source_str', '');
     }
 
     /**
